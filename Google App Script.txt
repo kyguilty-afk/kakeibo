@@ -1,0 +1,326 @@
+ =======================================================
+ 家計簿アプリ用 Google Apps Script (サマリー位置修正版)
+ ・「特別支出詳細」の集計ブロックをE列（左側）へ移動
+ ・表直前の空行削除などは維持
+ =======================================================
+
+var CATEGORIES = [
+  収入, 
+  ガス, 水道, 電気, 通信, 住居, 保険, 小遣い, 食費, 日用品, 衣料, 医療, 消耗, 交通, レジャー, 交際, 返済, 税金,
+  ペルソナ, 楽天, その他
+];
+
+var SPECIAL_CATS = [ペルソナ, 楽天, その他];
+var NORMAL_CATS = CATEGORIES.filter(function(c) {
+  return SPECIAL_CATS.indexOf(c) === -1;
+});
+
+var CAT_HEADER_TEXT = {
+  ペルソナ 15翌10,
+  楽天 未翌27
+};
+
+function doPost(e) {
+  try {
+    var jsonString = e.postData.contents;
+    var payload = JSON.parse(jsonString);
+    
+    var year, data;
+
+    if (Array.isArray(payload)) {
+       data = payload;
+       if (data.length === 0) return ContentService.createTextOutput(Success (No Data));
+       var dateObj = parseDateStr(data[0].date);
+       year = dateObj.year;
+    } else {
+       year = Number(payload.year);
+       data = payload.items  [];
+    }
+
+    if (!year) throw new Error(年が特定できません);
+    
+    var ss = getSpreadsheet(year);
+
+    saveToSourceSheet(ss, year, data);
+    createMatrixSheets(ss, year, data);
+
+    return ContentService.createTextOutput(Success);
+  } catch (err) {
+    logError(err);
+    return ContentService.createTextOutput(Error  + err.toString());
+  }
+}
+
+function doGet(e) {
+  try {
+    var year = e.parameter.year;
+    if (!year) return ContentService.createTextOutput(Year Required);
+
+    var ss = getSpreadsheet(year);
+    var sheet = ss.getSheetByName(履歴ソース_ + year);
+    
+    if (!sheet  sheet.getLastRow() = 1) {
+      return ContentService.createTextOutput([]).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues();
+    var items = values.map(function(row) {
+      return {
+        id String(row[0]),
+        date formatDateIso(row[1]),
+        category String(row[2]),
+        amount row[3],
+        memo String(row[4]),
+        createdAt String(row[5])
+      };
+    });
+
+    return ContentService.createTextOutput(JSON.stringify(items)).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    logError(err);
+    return ContentService.createTextOutput(JSON.stringify({error err.toString()})).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function parseDateStr(str) {
+  if (!str  typeof str !== 'string') return null;
+  var parts = str.split('-');
+  if (parts.length !== 3) return null;
+  return {
+    year parseInt(parts[0], 10),
+    month parseInt(parts[1], 10),
+    day parseInt(parts[2], 10)
+  };
+}
+
+function getSpreadsheet(year) {
+  var folderName = 家計簿データ;
+  var root = DriveApp.getRootFolder();
+  var folders = root.getFoldersByName(folderName);
+  var parentFolder = folders.hasNext()  folders.next()  root.createFolder(folderName);
+  var yearFolderName = year + 年;
+  var yearFolders = parentFolder.getFoldersByName(yearFolderName);
+  var yearFolder = yearFolders.hasNext()  yearFolders.next()  parentFolder.createFolder(yearFolderName);
+  var fileName = year + 年_家計簿;
+  var files = yearFolder.getFilesByName(fileName);
+  return files.hasNext()  SpreadsheetApp.open(files.next())  (function(){
+    var s = SpreadsheetApp.create(fileName);
+    DriveApp.getFileById(s.getId()).moveTo(yearFolder);
+    return s;
+  })();
+}
+
+function saveToSourceSheet(ss, year, newData) {
+  var sheetName = 履歴ソース_ + year;
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    sheet.appendRow([ID, 日付, カテゴリ, 金額, メモ, 作成日時]);
+    sheet.hideSheet();
+  }
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow  1) {
+    sheet.getRange(2, 1, lastRow - 1, 6).clearContent();
+  }
+
+  if (newData.length  0) {
+    var rows = newData.map(function(item) {
+      var id = String(item.id  (item.date + _ + item.amount + _ + Math.random()));
+      return [id, item.date, item.category, item.amount, item.memo, item.createdAt  new Date()];
+    });
+
+    rows.sort(function(a, b) { return a[1]  b[1]  1  -1; });
+    sheet.getRange(2, 1, rows.length, 6).setValues(rows);
+  }
+}
+
+function createMatrixSheets(ss, year, data) {
+  var matrixMap = {};
+  data.forEach(function(item) {
+    var dObj = parseDateStr(item.date);
+    if (!dObj  dObj.year !== year) return;
+    var m = dObj.month, day = dObj.day, amt = Number(item.amount);
+    if (!matrixMap[m]) matrixMap[m] = {};
+    if (!matrixMap[m][day]) {
+      matrixMap[m][day] = { income 0, expense 0, cats {} };
+      CATEGORIES.forEach(function(c) { matrixMap[m][day].cats[c] = 0; });
+    }
+    if (matrixMap[m][day].cats[item.category] !== undefined) matrixMap[m][day].cats[item.category] += amt;
+    if (SPECIAL_CATS.indexOf(item.category) === -1) {
+      if (item.category === 収入) matrixMap[m][day].income += amt;
+      else matrixMap[m][day].expense += amt;
+    }
+  });
+
+  for (var m = 1; m = 12; m++) {
+    var sheetName = m + 月;
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) sheet = ss.insertSheet(sheetName);
+    sheet.clear();
+
+    var monthTotalNormalInc = 0, monthTotalNormalExp = 0, specialTotals = {};
+    SPECIAL_CATS.forEach(function(c) { specialTotals[c] = 0; });
+    var colTotals = {};
+    CATEGORIES.forEach(function(c) { colTotals[c] = 0; });
+
+    var lastDay = new Date(year, m, 0).getDate();
+    for (var d = 1; d = lastDay; d++) {
+      var dayData = (matrixMap[m] && matrixMap[m][d])  matrixMap[m][d]  null;
+      if (dayData) {
+        monthTotalNormalInc += dayData.income;
+        monthTotalNormalExp += dayData.expense;
+        SPECIAL_CATS.forEach(function(c) { specialTotals[c] += (dayData.cats[c]  0); });
+        CATEGORIES.forEach(function(c) { colTotals[c] += (dayData.cats[c]  0); });
+      }
+    }
+
+    var header = [日付, ...NORMAL_CATS, 支出計, 収入計, 収支差額, , ...SPECIAL_CATS];
+    var totalCols = header.length;
+    var normalLen = NORMAL_CATS.length;
+
+     --- サマリー行構築 (E列へ移動) ---
+     配列 [A, B, C, D, E, F, G, H...]
+     A見出し, B項目, C値, D空, E見出し, F項目, G値
+    
+    var summaryRows = [];
+    
+     Row 1 見出し
+    var row1 = [【総合収支】, , , , 【特別支出詳細】, , ];
+    while (row1.length  totalCols) row1.push();
+     右上に年月
+    row1[totalCols - 1] = year + 年  + m + 月分;
+    summaryRows.push(row1);
+
+     Row 2 収入計  ペルソナ
+    var row2 = [, 収入計, monthTotalNormalInc, , , ペルソナ, specialTotals[ペルソナ]];
+    while (row2.length  totalCols) row2.push();
+    summaryRows.push(row2);
+
+     Row 3 支出計  楽天
+    var row3 = [, 支出計, monthTotalNormalExp, , , 楽天, specialTotals[楽天]];
+    while (row3.length  totalCols) row3.push();
+    summaryRows.push(row3);
+
+     Row 4 収支差  その他
+    var row4 = [, 収支差, monthTotalNormalInc - monthTotalNormalExp, , , その他, specialTotals[その他]];
+    while (row4.length  totalCols) row4.push();
+    summaryRows.push(row4);
+
+     Row 5 補足テキスト (E列以降の対応するカテゴリ上に配置するわけではなく、特別支出サマリーの下に配置するならここだが、
+     元のロジック通り「各列の上」に配置するなら、下の表の列位置(右側)に合わせる必要がある。
+     今回は「特別支出詳細を列Eへ」との指示なので、サマリー数値はE-G列。
+     補足テキスト（締め日など）は列に対する注釈なので、本来の位置（右側の特別カテゴリ列の上）に残すのが適切。
+    
+    var summaryNote = [, ...NORMAL_CATS.map(function(){return }), , , , ];  日付+通常+集計3+空
+     特別カテゴリ列の上にテキスト配置
+    SPECIAL_CATS.forEach(function(cat) { summaryNote.push(CAT_HEADER_TEXT[cat]  ); });
+    while (summaryNote.length  totalCols) summaryNote.push();
+    summaryRows.push(summaryNote);
+
+     空行なしでヘッダーへ
+    var rows = [...summaryRows, header]; 
+
+     データ行
+    for (var d = 1; d = lastDay; d++) {
+      var dateStr = m +  + d;
+      var row = [dateStr];
+      var dayData = (matrixMap[m] && matrixMap[m][d])  matrixMap[m][d]  { income 0, expense 0, cats {} };
+      NORMAL_CATS.forEach(function(c) { row.push(dayData.cats[c]  0); });
+      row.push(dayData.expense);
+      row.push(dayData.income);
+      row.push(dayData.income - dayData.expense);
+      row.push();
+      SPECIAL_CATS.forEach(function(c) { row.push(dayData.cats[c]  0); });
+      rows.push(row);
+    }
+
+     合計行（直前に空行）
+    var emptyRow = new Array(totalCols).fill();
+    rows.push(emptyRow); 
+    
+    var totalRow = [合計];
+    NORMAL_CATS.forEach(function(c) { totalRow.push(colTotals[c]); });
+    totalRow.push(monthTotalNormalExp);
+    totalRow.push(monthTotalNormalInc);
+    totalRow.push(monthTotalNormalInc - monthTotalNormalExp);
+    totalRow.push();
+    SPECIAL_CATS.forEach(function(c) { totalRow.push(colTotals[c]); });
+    rows.push(totalRow);
+
+    if (rows.length  0) {
+      sheet.getRange(1, 1, rows.length, totalCols).setValues(rows);
+      
+       --- デザイン ---
+      sheet.getRange(A1A1).setFontWeight(bold);
+      sheet.getRange(E1E1).setFontWeight(bold);  E1見出し
+      sheet.getRange(1, totalCols).setFontWeight(bold).setHorizontalAlignment(right).setFontSize(12);
+
+       総合収支枠
+      sheet.getRange(B2C4).setBackground(#EFEFEF).setBorder(true, true, true, true, true, true).setNumberFormat(#,##0).setFontWeight(bold);
+       特別収支枠 (F2G4)
+      sheet.getRange(F2G4).setBackground(#FFF2CC).setBorder(true, true, true, true, true, true).setNumberFormat(#,##0).setFontWeight(bold);
+
+      var headerRowIndex = 6; 
+      var noteRowIndex = 5;   
+      var tableStartRow = headerRowIndex + 1;
+      
+      sheet.getRange(noteRowIndex, 1, 1, totalCols).setFontSize(9).setFontColor(#666666).setHorizontalAlignment(center);
+      sheet.getRange(headerRowIndex, 1, 1, totalCols).setFontWeight(bold);
+      
+      var normalHeaderLen = 1 + NORMAL_CATS.length + 3;
+      sheet.getRange(headerRowIndex, 1, 1, normalHeaderLen).setBackground(#4472C4).setFontColor(#FFFFFF);
+      var specialStartCol = normalHeaderLen + 2;
+      if (specialStartCol = totalCols) {
+        sheet.getRange(headerRowIndex, specialStartCol, 1, SPECIAL_CATS.length).setBackground(#FFF2CC).setFontColor(#000000);
+      }
+
+      sheet.setColumnWidth(1, 35);
+      for (var c=2; c=totalCols; c++) sheet.setColumnWidth(c, 60);
+      sheet.setColumnWidth(normalHeaderLen + 1, 10);
+
+      var dataRowCount = rows.length - headerRowIndex - 2; 
+      if (dataRowCount  0) {
+        sheet.getRange(tableStartRow, 1, dataRowCount, 1).setBackground(#E6F4EA).setFontWeight(bold);
+        sheet.getRange(tableStartRow, 2, dataRowCount, totalCols - 1).setNumberFormat(#,##0);
+      }
+      
+      var totalRowIndex = rows.length;
+      sheet.getRange(totalRowIndex, 1, 1, totalCols).setFontWeight(bold).setBackground(#EFEFEF).setNumberFormat(#,##0);
+      sheet.getRange(totalRowIndex, 1).setHorizontalAlignment(center);
+
+      var mainTableRows = dataRowCount + 1;
+      sheet.getRange(headerRowIndex, 1, mainTableRows, normalHeaderLen).setBorder(true, true, true, true, true, true);
+      if (specialStartCol = totalCols) {
+        sheet.getRange(headerRowIndex, specialStartCol, mainTableRows, SPECIAL_CATS.length).setBorder(true, true, true, true, true, true);
+      }
+      sheet.getRange(totalRowIndex, 1, 1, normalHeaderLen).setBorder(true, true, true, true, true, true);
+      if (specialStartCol = totalCols) {
+        sheet.getRange(totalRowIndex, specialStartCol, 1, SPECIAL_CATS.length).setBorder(true, true, true, true, true, true);
+      }
+    }
+  }
+  var defSheet = ss.getSheetByName('シート1');
+  if (defSheet && ss.getSheets().length  1) ss.deleteSheet(defSheet);
+}
+
+function formatDateIso(date) {
+  if (!date) return ;
+  var d = new Date(date);
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), yyyy-MM-dd);
+}
+
+function logError(error) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      var files = DriveApp.getFilesByName(家計簿デバッグログ);
+      ss = files.hasNext()  SpreadsheetApp.open(files.next())  SpreadsheetApp.create(家計簿デバッグログ);
+    }
+    var sheet = ss.getSheetByName(エラーログ);
+    if (!sheet) sheet = ss.insertSheet(エラーログ);
+    sheet.appendRow([new Date(), error.toString(), error.stack]);
+  } catch (e) {
+    console.error(ログ記録失敗  + e.toString());
+  }
+}

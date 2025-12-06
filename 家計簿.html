@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>シンプル家計簿</title>
+    <link rel="icon" href="icon.png" type="image/png">
+    <link rel="apple-touch-icon" href="icon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+        }
+
+        input[type="date"],
+        input[type="number"],
+        select {
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        /* ダークモード用のスクロールバー調整 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-gray-100 pb-4">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // =================================================================
+        // 設定: URLはlocalStorageから読み込みます
+        // =================================================================
+
+
+
+        // --- アイコン部品 ---
+        const Icon = ({ path, color = "currentColor", size = 24, className = "" }) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{path}</svg>);
+        const Icons = {
+            Plus: <><path d="M5 12h14" /><path d="M12 5v14" /></>,
+            Trash: <><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></>,
+            Excel: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M8 13h2" /><path d="M8 17h2" /><path d="M14 13h2" /><path d="M14 17h2" /></>,
+            CloudUp: <><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /><path d="M12 12v9" /><path d="m16 16-4-4-4 4" /></>,
+            CloudDown: <><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /><path d="M12 12v9" /><path d="m8 17 4 4 4-4" /></>,
+            CreditCard: <><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></>,
+            Calendar: <><rect width="18" height="18" x="3" y="4" rx="2" ry="2" /><line x1="16" x2="16" y1="2" y2="6" /><line x1="8" x2="8" y1="2" y2="6" /><line x1="3" x2="21" y1="10" y2="10" /></>,
+            Yen: <><path d="M12 8.5V21" /><path d="M4 3l8 5.5L20 3" /><path d="M8 11h8" /><path d="M8 15h8" /></>,
+            Refresh: <><path d="M21 12a9 9 0 1 1-6.219-8.56" /><path d="M21 2.9V8h-5.1" /></>,
+            Settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></>
+        };
+        const SimpleIcon = ({ name, className, size = 24 }) => <Icon path={Icons[name]} className={className} size={size} />;
+
+        // カテゴリ定義
+        const CATEGORIES = [
+            "収入",
+            "ガス", "水道", "電気", "通信", "住居", "保険", "小遣い", "食費", "日用品", "衣料", "医療", "消耗", "交通", "レジャー", "交際", "返済", "税金",
+            "ペルソナ", "楽天", "その他"
+        ];
+
+        const EXCLUDED_CATS = ["ペルソナ", "楽天", "その他"];
+        const NORMAL_CATS = CATEGORIES.filter(c => !EXCLUDED_CATS.includes(c));
+        const SPECIAL_CATS = CATEGORIES.filter(c => EXCLUDED_CATS.includes(c));
+        const CAT_HEADER_TEXT = { "ペルソナ": "15/翌10", "楽天": "未/翌27" };
+
+        const App = () => {
+            const [items, setItems] = useState([]);
+            const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], amount: '', category: '食費', memo: '' });
+            const [year, setYear] = useState(new Date().getFullYear().toString());
+            const [filterMonth, setFilterMonth] = useState((new Date().getMonth() + 1).toString());
+            const [viewMode, setViewMode] = useState('input');
+            const [status, setStatus] = useState({ loading: false, msg: '', type: '' });
+            const [scriptUrl, setScriptUrl] = useState(localStorage.getItem('kakeibo_script_url') || "");
+            const [showSettings, setShowSettings] = useState(false);
+
+            useEffect(() => {
+                const savedUrl = localStorage.getItem('kakeibo_script_url');
+                if (savedUrl) setScriptUrl(savedUrl);
+            }, []);
+
+            const saveScriptUrl = (url) => {
+                localStorage.setItem('kakeibo_script_url', url);
+                setScriptUrl(url);
+                setShowSettings(false);
+                setStatus({ loading: false, msg: 'URL保存完了', type: 'success' });
+                setTimeout(() => setStatus({ loading: false, msg: '', type: '' }), 2000);
+            };
+
+            // 共通同期関数
+            const syncWithCloud = async (targetYear = year, dataToSync = null) => {
+                if (!scriptUrl) {
+                    setShowSettings(true);
+                    return alert("設定画面でGASのURLを設定してください");
+                }
+
+                const isAuto = !dataToSync && status.msg === '';
+                if (!isAuto) setStatus({ loading: true, msg: dataToSync ? '保存中...' : '読込中...', type: 'info' });
+
+                try {
+                    let itemsFromServer;
+                    if (dataToSync) {
+                        // 保存時：POST送信 (その年の全データを送信)
+                        // 形式: { year: "2024", items: [...] }
+                        const yearData = dataToSync.filter(i => i.date.startsWith(targetYear));
+
+
+                        await fetch(scriptUrl, {
+                            method: "POST",
+                            mode: "no-cors",
+                            body: JSON.stringify({ year: targetYear, items: yearData })
+                        });
+
+                        itemsFromServer = dataToSync;
+                        if (!isAuto) setStatus({ loading: false, msg: '保存完了', type: 'success' });
+                    } else {
+                        // 読込時：GET送信
+                        const res = await fetch(`${scriptUrl}?year=${targetYear}`);
+                        itemsFromServer = await res.json();
+                        if (!isAuto) setStatus({ loading: false, msg: '読込完了', type: 'success' });
+                    }
+
+                    if (Array.isArray(itemsFromServer)) {
+                        setItems(currentItems => {
+                            // 他の年のデータは保持しつつ、対象年のデータだけ置換する
+                            const otherYearsItems = currentItems.filter(i => !i.date.startsWith(targetYear));
+                            return [...otherYearsItems, ...itemsFromServer];
+                        });
+                    }
+                } catch (e) {
+                    console.error(e);
+                    if (!isAuto) setStatus({ loading: false, msg: '通信エラー', type: 'error' });
+                }
+                setTimeout(() => setStatus({ loading: false, msg: '', type: '' }), 2000);
+            };
+
+            // UIボタン用ラッパー
+            const uploadToCloud = () => {
+                if (!scriptUrl) { setShowSettings(true); return; }
+                if (!window.confirm(`クラウドに保存しますか？\n(追記・更新のみ)`)) return;
+                syncWithCloud(year, items);
+            };
+
+            const restoreFromCloud = () => {
+                if (!scriptUrl) { setShowSettings(true); return; }
+                if (!window.confirm(`クラウドからデータを読み込みますか？`)) return;
+                syncWithCloud(year);
+            };
+
+            // 自動同期 (年/月変更時)
+            useEffect(() => {
+                syncWithCloud(year);
+            }, [year, filterMonth]);
+
+            // ローカル保存
+            useEffect(() => localStorage.setItem('kakeibo_data', JSON.stringify(items)), [items]);
+
+            // 集計ロジック
+            const yearItems = useMemo(() => items.filter(i => i.date.startsWith(year)), [items, year]);
+            const monthItems = useMemo(() => yearItems.filter(i => new Date(i.date).getMonth() + 1 == filterMonth).sort((a, b) => new Date(b.date) - new Date(a.date)), [yearItems, filterMonth]);
+
+            const dailyMap = useMemo(() => {
+                const map = {};
+                yearItems.forEach(i => {
+                    if (!map[i.date]) { map[i.date] = { inc: 0, exp: 0, cats: {} }; }
+                    const v = Number(i.amount);
+                    map[i.date].cats[i.category] = (map[i.date].cats[i.category] || 0) + v;
+                    if (!EXCLUDED_CATS.includes(i.category)) {
+                        i.category === '収入' ? map[i.date].inc += v : map[i.date].exp += v;
+                    }
+                });
+                return map;
+            }, [yearItems]);
+
+            const monthDays = useMemo(() => {
+                const days = [], last = new Date(year, filterMonth, 0).getDate();
+                for (let d = 1; d <= last; d++) {
+                    const date = `${year}-${filterMonth.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+                    const dat = dailyMap[date] || { inc: 0, exp: 0, cats: {} };
+                    days.push({ date, day: d, ...dat });
+                }
+                return days;
+            }, [year, filterMonth, dailyMap]);
+
+            const curInc = monthItems.filter(i => i.category === '収入' && !EXCLUDED_CATS.includes(i.category)).reduce((a, c) => a + Number(c.amount), 0);
+            const curExp = monthItems.filter(i => i.category !== '収入' && !EXCLUDED_CATS.includes(i.category)).reduce((a, c) => a + Number(c.amount), 0);
+
+            const handleSave = (e) => {
+                e.preventDefault(); if (!form.amount) return;
+                const newItem = { id: Date.now().toString(), ...form, createdAt: new Date().toISOString() };
+                const newItems = [...items, newItem];
+                setItems(newItems);
+                syncWithCloud(year, newItems); // 入力後即同期
+                setForm({ ...form, amount: '', memo: '' });
+            };
+
+            const handleDelete = (id) => {
+                if (window.confirm('削除しますか？')) {
+                    const newItems = items.filter(i => i.id !== id);
+                    setItems(newItems);
+                    syncWithCloud(year, newItems); // 削除後即同期
+                }
+            };
+
+            // Excel保存機能
+            const exportExcel = () => {
+                let xml = `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles>
+                <Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Center"/><Font ss:FontName="Meiryo UI" ss:Size="11" ss:Color="#000000"/></Style>
+                <Style ss:ID="H_NORM"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#4472C4" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>
+                <Style ss:ID="H_SPEC"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:Bold="1" ss:Color="#000000"/><Interior ss:Color="#FFF2CC" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>
+                <Style ss:ID="D_DATE"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:Bold="1"/><Interior ss:Color="#E6F4EA" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>
+                <Style ss:ID="D_NUM"><NumberFormat ss:Format="#,##0"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>
+                <Style ss:ID="SUM_TITLE"><Font ss:Bold="1"/></Style>
+                <Style ss:ID="SUM_BOX_NORM"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:Bold="1"/><Interior ss:Color="#EFEFEF" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><NumberFormat ss:Format="#,##0"/></Style>
+                <Style ss:ID="SUM_BOX_SPEC"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:Bold="1"/><Interior ss:Color="#FFF2CC" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><NumberFormat ss:Format="#,##0"/></Style>
+                <Style ss:ID="NOTE"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:Size="9" ss:Color="#666666"/></Style>
+                <Style ss:ID="TOTAL_ROW"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:Bold="1"/><Interior ss:Color="#EFEFEF" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><NumberFormat ss:Format="#,##0"/></Style>
+                <Style ss:ID="TOTAL_LABEL"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:Bold="1"/><Interior ss:Color="#EFEFEF" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>
+                <Style ss:ID="TITLE_RIGHT"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:Bold="1" ss:Size="12"/></Style>
+                </Styles>`;
+
+                for (let m = 1; m <= 12; m++) {
+                    let sumNormInc = 0, sumNormExp = 0;
+                    let spTotals = {};
+                    SPECIAL_CATS.forEach(c => spTotals[c] = 0);
+                    let colTotals = {};
+                    CATEGORIES.forEach(c => colTotals[c] = 0);
+
+                    const last = new Date(year, m, 0).getDate();
+                    for (let d = 1; d <= last; d++) {
+                        const k = `${year}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+                        const dt = dailyMap[k] || { inc: 0, exp: 0, cats: {} };
+                        sumNormInc += dt.inc; sumNormExp += dt.exp;
+                        SPECIAL_CATS.forEach(c => spTotals[c] += (dt.cats[c] || 0));
+                        CATEGORIES.forEach(c => colTotals[c] += (dt.cats[c] || 0));
+                    }
+
+                    xml += `<Worksheet ss:Name="${m}月"><Table>`;
+                    // 列定義
+                    xml += `<Column ss:Width="35"/>`; // 日付
+                    NORMAL_CATS.forEach(() => xml += `<Column ss:Width="60"/>`);
+                    xml += `<Column ss:Width="60"/><Column ss:Width="60"/><Column ss:Width="60"/>`; // 支出計, 収入計, 収支差
+                    xml += `<Column ss:Width="10"/>`; // 空列
+                    SPECIAL_CATS.forEach(() => xml += `<Column ss:Width="60"/>`);
+
+                    // 1行目: タイトル
+                    xml += `<Row><Cell ss:StyleID="SUM_TITLE"><Data ss:Type="String">【総合収支】</Data></Cell><Cell/><Cell/><Cell/><Cell ss:StyleID="SUM_TITLE"><Data ss:Type="String">【特別支出詳細】</Data></Cell>`;
+                    // 右端に年月を表示するため、空セルを埋める
+                    const totalCols = 1 + NORMAL_CATS.length + 3 + 1 + SPECIAL_CATS.length;
+                    for (let i = 6; i < totalCols; i++) xml += `<Cell/>`;
+                    xml += `<Cell ss:StyleID="TITLE_RIGHT"><Data ss:Type="String">${year}年 ${m}月分</Data></Cell></Row>`;
+
+                    // 2行目: 収入計 / ペルソナ
+                    xml += `<Row><Cell/><Cell ss:StyleID="SUM_BOX_NORM"><Data ss:Type="String">収入計</Data></Cell><Cell ss:StyleID="SUM_BOX_NORM"><Data ss:Type="Number">${sumNormInc}</Data></Cell><Cell/><Cell/><Cell ss:StyleID="SUM_BOX_SPEC"><Data ss:Type="String">ペルソナ</Data></Cell><Cell ss:StyleID="SUM_BOX_SPEC"><Data ss:Type="Number">${spTotals["ペルソナ"]}</Data></Cell></Row>`;
+
+                    // 3行目: 支出計 / 楽天
+                    xml += `<Row><Cell/><Cell ss:StyleID="SUM_BOX_NORM"><Data ss:Type="String">支出計</Data></Cell><Cell ss:StyleID="SUM_BOX_NORM"><Data ss:Type="Number">${sumNormExp}</Data></Cell><Cell/><Cell/><Cell ss:StyleID="SUM_BOX_SPEC"><Data ss:Type="String">楽天</Data></Cell><Cell ss:StyleID="SUM_BOX_SPEC"><Data ss:Type="Number">${spTotals["楽天"]}</Data></Cell></Row>`;
+
+                    // 4行目: 収支差 / その他
+                    xml += `<Row><Cell/><Cell ss:StyleID="SUM_BOX_NORM"><Data ss:Type="String">収支差</Data></Cell><Cell ss:StyleID="SUM_BOX_NORM"><Data ss:Type="Number">${sumNormInc - sumNormExp}</Data></Cell><Cell/><Cell/><Cell ss:StyleID="SUM_BOX_SPEC"><Data ss:Type="String">その他</Data></Cell><Cell ss:StyleID="SUM_BOX_SPEC"><Data ss:Type="Number">${spTotals["その他"]}</Data></Cell></Row>`;
+
+                    // 5行目: 補足テキスト
+                    xml += `<Row><Cell/><Cell/>`; // 日付, 空
+                    NORMAL_CATS.forEach(() => xml += `<Cell/>`);
+                    xml += `<Cell/><Cell/><Cell/><Cell/>`; // 支出計, 収入計, 収支差, 空列
+                    SPECIAL_CATS.forEach(c => xml += `<Cell ss:StyleID="NOTE"><Data ss:Type="String">${CAT_HEADER_TEXT[c] || ""}</Data></Cell>`);
+                    xml += `</Row>`;
+
+                    // 6行目: ヘッダー
+                    xml += `<Row><Cell ss:StyleID="H_NORM"><Data ss:Type="String">日付</Data></Cell>`;
+                    NORMAL_CATS.forEach(c => xml += `<Cell ss:StyleID="H_NORM"><Data ss:Type="String">${c}</Data></Cell>`);
+                    xml += `<Cell ss:StyleID="H_NORM"><Data ss:Type="String">支出計</Data></Cell><Cell ss:StyleID="H_NORM"><Data ss:Type="String">収入計</Data></Cell><Cell ss:StyleID="H_NORM"><Data ss:Type="String">収支差</Data></Cell>`;
+                    xml += `<Cell/>`;
+                    SPECIAL_CATS.forEach(c => xml += `<Cell ss:StyleID="H_SPEC"><Data ss:Type="String">${c}</Data></Cell>`);
+                    xml += `</Row>`;
+
+                    // データ行
+                    for (let d = 1; d <= last; d++) {
+                        const dateKey = `${year}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+                        const dateDisp = `${m}/${d}`;
+                        const dat = dailyMap[dateKey] || { inc: 0, exp: 0, cats: {} };
+
+                        xml += `<Row><Cell ss:StyleID="D_DATE"><Data ss:Type="String">${dateDisp}</Data></Cell>`;
+                        NORMAL_CATS.forEach(c => xml += `<Cell ss:StyleID="D_NUM"><Data ss:Type="Number">${dat.cats[c] || 0}</Data></Cell>`);
+                        xml += `<Cell ss:StyleID="D_NUM"><Data ss:Type="Number">${dat.exp}</Data></Cell><Cell ss:StyleID="D_NUM"><Data ss:Type="Number">${dat.inc}</Data></Cell><Cell ss:StyleID="D_NUM"><Data ss:Type="Number">${dat.inc - dat.exp}</Data></Cell>`;
+                        xml += `<Cell/>`;
+                        SPECIAL_CATS.forEach(c => xml += `<Cell ss:StyleID="D_NUM"><Data ss:Type="Number">${dat.cats[c] || 0}</Data></Cell>`);
+                        xml += `</Row>`;
+                    }
+
+                    // 空行
+                    xml += `<Row/>`;
+
+                    // 合計行
+                    xml += `<Row><Cell ss:StyleID="TOTAL_LABEL"><Data ss:Type="String">合計</Data></Cell>`;
+                    NORMAL_CATS.forEach(c => xml += `<Cell ss:StyleID="TOTAL_ROW"><Data ss:Type="Number">${colTotals[c]}</Data></Cell>`);
+                    xml += `<Cell ss:StyleID="TOTAL_ROW"><Data ss:Type="Number">${sumNormExp}</Data></Cell><Cell ss:StyleID="TOTAL_ROW"><Data ss:Type="Number">${sumNormInc}</Data></Cell><Cell ss:StyleID="TOTAL_ROW"><Data ss:Type="Number">${sumNormInc - sumNormExp}</Data></Cell>`;
+                    xml += `<Cell/>`;
+                    SPECIAL_CATS.forEach(c => xml += `<Cell ss:StyleID="TOTAL_ROW"><Data ss:Type="Number">${colTotals[c]}</Data></Cell>`);
+                    xml += `</Row>`;
+
+                    xml += `</Table>
+                    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+                        <PageSetup>
+                            <Layout x:Orientation="Landscape"/>
+                            <PageMargins x:Bottom="0.5" x:Left="0.5" x:Right="0.5" x:Top="0.5"/>
+                        </PageSetup>
+                        <FitToPage/>
+                        <Print>
+                            <FitWidth>1</FitWidth>
+                            <FitHeight>0</FitHeight>
+                            <PaperSizeIndex>9</PaperSizeIndex>
+                        </Print>
+                    </WorksheetOptions>
+                    </Worksheet>`;
+                }
+                xml += `</Workbook>`;
+                const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([xml], { type: "application/vnd.ms-excel" })); a.download = `家計簿_${year}.xls`; a.click();
+            };
+
+            return (
+                <div className="min-h-screen font-sans">
+                    <header className="bg-gray-800 shadow-sm sticky top-0 z-20 px-3 py-1 flex justify-between items-center border-b border-gray-700">
+                        <h1 className="text-base font-bold text-gray-100 flex items-center gap-2"><SimpleIcon name="CreditCard" className="text-blue-400" size={20} /> 家計簿</h1>
+                        <div className="flex gap-1 bg-gray-700 rounded-lg p-0.5 text-xs font-bold text-gray-200">
+                            <select value={year} onChange={(e) => setYear(e.target.value)} className="bg-transparent border-none p-1">{Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(y => <option key={y} value={y} className="text-gray-900">{y}年</option>)}</select>
+                            <span className="py-1 text-gray-500">|</span>
+                            <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="bg-transparent border-none p-1">{Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m} className="text-gray-900">{m}月</option>)}</select>
+                            <button onClick={() => syncWithCloud(year)} className="ml-1 p-1 text-gray-400 hover:text-blue-400"><SimpleIcon name="Refresh" size={14} /></button>
+                            <button onClick={() => setShowSettings(true)} className="ml-1 p-1 text-gray-400 hover:text-blue-400"><SimpleIcon name="Settings" size={14} /></button>
+                        </div>
+                    </header>
+
+                    <main className="max-w-md mx-auto p-2 space-y-2">
+                        {status.msg && (
+                            <div className={`fixed top-12 left-1/2 transform -translate-x-1/2 z-50 px-4 py-1 rounded-full shadow-xl border backdrop-blur-md text-xs font-bold transition-all duration-300 ${status.type === 'success' ? 'text-green-100 bg-green-600/90 border-green-500' : status.type === 'error' ? 'text-red-100 bg-red-600/90 border-red-500' : 'text-blue-100 bg-blue-600/90 border-blue-500'}`}>
+                                {status.msg}
+                            </div>
+                        )}
+
+                        <div className="bg-gray-800 p-1 rounded-xl flex shadow-inner border border-gray-700">
+                            <button onClick={() => setViewMode('input')} className={`flex-1 py-1 rounded-lg text-xs font-bold ${viewMode === 'input' ? 'bg-gray-700 text-blue-400 shadow' : 'text-gray-500'}`}>入力</button>
+                            <button onClick={() => setViewMode('history')} className={`flex-1 py-1 rounded-lg text-xs font-bold ${viewMode === 'history' ? 'bg-gray-700 text-blue-400 shadow' : 'text-gray-500'}`}>履歴</button>
+                            <button onClick={() => setViewMode('matrix')} className={`flex-1 py-1 rounded-lg text-xs font-bold ${viewMode === 'matrix' ? 'bg-gray-700 text-blue-400 shadow' : 'text-gray-500'}`}>集計</button>
+                        </div>
+
+
+                        <div className="grid grid-cols-2 gap-2">
+                            <button onClick={uploadToCloud} disabled={status.loading} className="bg-blue-900/30 border border-blue-800 text-blue-400 py-1 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 active:bg-blue-900/50">
+                                <SimpleIcon name="CloudUp" size={14} /> クラウドへ保存
+                            </button>
+                            <button onClick={restoreFromCloud} disabled={status.loading} className="bg-orange-900/30 border border-orange-800 text-orange-400 py-1 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 active:bg-orange-900/50">
+                                <SimpleIcon name="CloudDown" size={14} /> 強制復元
+                            </button>
+                        </div>
+
+                        {showSettings && (
+                            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                                <div className="bg-gray-800 p-4 rounded-xl shadow-xl w-full max-w-sm border border-gray-700">
+                                    <h3 className="text-gray-200 font-bold mb-2 flex items-center gap-2"><SimpleIcon name="Settings" size={18} /> 設定</h3>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="text-xs text-gray-400 block mb-1">Google Apps Script URL</label>
+                                            <input type="text" className="w-full bg-gray-900 text-gray-200 rounded p-2 text-xs border border-gray-600 focus:border-blue-500 outline-none"
+                                                placeholder="https://script.google.com/..."
+                                                defaultValue={scriptUrl}
+                                                id="urlInput"
+                                            />
+                                            <p className="text-[10px] text-gray-500 mt-1">※このURLはブラウザ内にのみ保存されます。</p>
+                                        </div>
+                                        <div className="flex gap-2 justify-end">
+                                            <button onClick={() => setShowSettings(false)} className="px-3 py-1 text-xs text-gray-400 hover:text-gray-200">閉じる</button>
+                                            <button onClick={() => saveScriptUrl(document.getElementById('urlInput').value)} className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold">保存</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {(viewMode === 'input' || viewMode === 'history') && (
+                            <div className="bg-gray-800 rounded-2xl shadow-sm p-2 grid grid-cols-2 gap-1 border border-gray-700 text-center">
+                                <div className="col-span-2 pb-1 border-b border-gray-700 font-bold text-gray-200 text-xs">{year}年{filterMonth}月 収支 (特別費除く)</div>
+                                <div><p className="text-[10px] text-gray-400">収入</p><p className="text-sm font-bold text-blue-400">¥{curInc.toLocaleString()}</p></div>
+                                <div><p className="text-[10px] text-gray-400">支出</p><p className="text-sm font-bold text-red-400">¥{curExp.toLocaleString()}</p></div>
+                                <div className="col-span-2 pt-1 border-t border-gray-700"><p className="text-[10px] text-gray-400">残高</p><p className={`text-base font-bold ${curInc - curExp >= 0 ? 'text-gray-200' : 'text-red-400'}`}>¥{(curInc - curExp).toLocaleString()}</p></div>
+                            </div>
+                        )}
+
+                        {viewMode === 'input' && (
+                            <form onSubmit={handleSave} className="bg-gray-800 rounded-2xl shadow-sm p-2 space-y-2 border border-gray-700">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="col-span-2"><label className="text-[10px] text-gray-400 ml-1">日付</label><div className="relative"><SimpleIcon name="Calendar" className="absolute left-2 top-1.5 text-gray-400" size={16} /><input type="date" className="w-full bg-gray-700 text-white rounded-lg py-1 pl-8 pr-2 font-bold border-none focus:ring-2 focus:ring-blue-500 text-xs" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div></div>
+                                    <div className="col-span-2"><label className="text-[10px] text-gray-400 ml-1">金額</label><div className="relative"><SimpleIcon name="Yen" className="absolute left-2 top-1.5 text-gray-400" size={16} /><input type="number" className="w-full bg-gray-700 text-white rounded-lg py-1 pl-8 pr-2 text-lg font-bold border-none focus:ring-2 focus:ring-blue-500" placeholder="0" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} required /></div></div>
+                                    <div className="col-span-2"><label className="text-[10px] text-gray-400 ml-1">カテゴリ</label><select className="w-full bg-gray-700 text-white rounded-lg p-1 text-xs border-none focus:ring-2 focus:ring-blue-500" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{CATEGORIES.map(c => <option key={c} value={c} className="text-gray-900">{c}</option>)}</select></div>
+                                    <div className="col-span-2"><input type="text" className="w-full bg-gray-700 text-white rounded-lg p-1 text-xs border-none focus:ring-2 focus:ring-blue-500" placeholder="メモ (任意)" value={form.memo} onChange={e => setForm({ ...form, memo: e.target.value })} /></div>
+                                </div>
+                                <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-xl shadow-md flex justify-center items-center gap-2 active:scale-95 transition text-xs"><SimpleIcon name="Plus" size={16} /> 記録する</button>
+                            </form>
+                        )}
+
+                        {viewMode === 'history' && (
+                            <div className="space-y-2">
+                                <h2 className="font-bold text-gray-300 px-1 text-xs">履歴 ({filterMonth}月)</h2>
+                                {!monthItems.length && <div className="text-center py-8 text-gray-500 text-xs bg-gray-800 rounded-xl border border-dashed border-gray-700">データなし (クラウド同期中)</div>}
+                                {monthItems.map(i => (
+                                    <div key={i.id} className={`bg-gray-800 p-2 rounded-xl shadow-sm flex justify-between items-center border-l-4 ${EXCLUDED_CATS.includes(i.category) ? 'border-yellow-500' : 'border-blue-500'}`}>
+                                        <div className="flex-1">
+                                            <div className="flex gap-2 mb-1 text-[10px]"><span className="font-bold bg-gray-700 text-gray-300 px-1 rounded">{i.category}</span><span className="text-gray-400">{i.date}</span></div>
+                                            <div className="flex items-baseline gap-2"><span className="font-bold text-gray-100 text-xs">¥{Number(i.amount).toLocaleString()}</span></div>
+                                            {i.memo && <p className="text-[10px] text-gray-500 truncate">{i.memo}</p>}
+                                        </div>
+                                        <button onClick={() => handleDelete(i.id)} className="text-gray-500 hover:text-red-400 p-2"><SimpleIcon name="Trash" size={16} /></button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {viewMode === 'matrix' && (
+                            <div className="bg-gray-800 rounded-2xl shadow-sm p-2 border border-gray-700 overflow-hidden">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h2 className="font-bold text-gray-300 text-xs">{year}年{filterMonth}月 集計</h2>
+                                    <button onClick={exportExcel} className="text-[10px] bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded flex items-center gap-1 shadow"><SimpleIcon name="Excel" size={12} /> A4保存</button>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-[10px] text-right whitespace-nowrap text-gray-300">
+                                        <thead className="bg-gray-700 text-gray-400"><tr><th className="p-1 sticky left-0 bg-gray-700 text-center">日</th>{CATEGORIES.map(c => <th key={c} className={`p-1 ${EXCLUDED_CATS.includes(c) ? 'text-yellow-400' : ''}`}>{c}</th>)}<th className="p-1 text-red-400">支出</th><th className="p-1 text-blue-400">収入</th><th className="p-1 font-bold text-gray-200">差額</th></tr></thead>
+                                        <tbody className="divide-y divide-gray-700">
+                                            {monthDays.map(d => (
+                                                <tr key={d.date}>
+                                                    <td className="p-1 font-bold sticky left-0 bg-gray-800 border-r border-gray-700 text-center">{d.day}</td>
+                                                    {CATEGORIES.map(c => <td key={c} className={`p-1 text-gray-600 ${EXCLUDED_CATS.includes(c) ? 'text-yellow-200' : 'text-gray-400'}`}>{d.cats[c] > 0 ? d.cats[c].toLocaleString() : ''}</td>)}
+                                                    <td className="p-1 text-red-400">{d.exp > 0 ? d.exp.toLocaleString() : '-'}</td>
+                                                    <td className="p-1 text-blue-400">{d.inc > 0 ? d.inc.toLocaleString() : '-'}</td>
+                                                    <td className="p-1 font-bold text-gray-200">{d.inc - d.exp !== 0 ? (d.inc - d.exp).toLocaleString() : '-'}</td>
+                                                </tr>
+                                            ))}
+                                            <tr className="bg-gray-700 font-bold border-t border-gray-600">
+                                                <td className="p-1 sticky left-0 bg-gray-700 border-r border-gray-600 text-center">計</td>
+                                                {CATEGORIES.map(c => <td key={c} className={`p-1 ${EXCLUDED_CATS.includes(c) ? 'text-yellow-400' : ''}`}>{monthDays.reduce((a, b) => a + (b.cats[c] || 0), 0).toLocaleString()}</td>)}
+                                                <td className="p-1 text-red-400">{monthDays.reduce((a, b) => a + b.exp, 0).toLocaleString()}</td>
+                                                <td className="p-1 text-blue-400">{monthDays.reduce((a, b) => a + b.inc, 0).toLocaleString()}</td>
+                                                <td className="p-1 text-gray-200">{(monthDays.reduce((a, b) => a + b.inc, 0) - monthDays.reduce((a, b) => a + b.exp, 0)).toLocaleString()}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        };
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
